@@ -1,75 +1,82 @@
-import os
-import shutil
-import base64
+import uuid
+from pathlib import Path
+
 import cv2
-import numpy as np
-
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
-from .service import FaceDetector, draw_faces
-from .schemas import FaceBox, FaceDetectionResult
-from .video import mjpeg_stream_from_video_path, current_face_count
+from fastapi.responses import StreamingResponse, Response
 
-router = APIRouter(prefix="/face", tags=["Face Detection"])
+from .schemas import UploadResponse, CountResponse
+from .service import DETECTOR, draw_faces
+from .video import mjpeg_stream_from_video_path, get_counts
 
-detector = FaceDetector(min_confidence=0.1)
+router = APIRouter()
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-
-@router.post("/image", response_model=FaceDetectionResult)
-async def detect_faces_in_image(file: UploadFile = File(...)):
-
-    content = await file.read()
-    np_arr = np.frombuffer(content, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-    if img is None:
-        raise HTTPException(status_code=400, detail="Invalid image file")
-
-    detections = detector.detect(img)
-    img_with_boxes = draw_faces(img, detections)
-
-    _, buffer = cv2.imencode(".jpg", img_with_boxes)
-    image_base64 = base64.b64encode(buffer).decode("utf-8")
-
-    faces = [
-        FaceBox(box=box, confidence=score)
-        for (box, score) in detections
-    ]
-
-    return FaceDetectionResult(
-        face_count=len(faces),
-        faces=faces,
-        image_base64=image_base64
-    )
+BASE_DIR = Path(__file__).resolve().parents[1]  # backend/src
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/video")
+def _save_upload(file: UploadFile) -> tuple[str, str]:
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
+
+    ext = Path(file.filename).suffix.lower().strip()
+    file_id = uuid.uuid4().hex
+    saved_name = f"{file_id}{ext}" if ext else file_id
+
+    out_path = UPLOAD_DIR / saved_name
+    with open(out_path, "wb") as f:
+        f.write(file.file.read())
+
+    return file_id, saved_name
+
+
+@router.post("/upload/video", response_model=UploadResponse)
 async def upload_video(file: UploadFile = File(...)):
-
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return {
-        "stream_url": f"/face/video/stream/{file.filename}"
-    }
+    file_id, saved_name = _save_upload(file)
+    return UploadResponse(message="Video uploaded", file_name=saved_name, file_id=file_id)
 
 
-@router.get("/video/stream/{filename}")
-def stream_video(filename: str):
-
-    file_path = os.path.join(UPLOAD_FOLDER, filename)
+@router.get("/video/stream/{file_name}")
+def stream_video(file_name: str):
+    video_path = UPLOAD_DIR / file_name
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video not found")
 
     return StreamingResponse(
-        mjpeg_stream_from_video_path(file_path),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        mjpeg_stream_from_video_path(str(video_path)),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
 
 
-@router.get("/video/count")
-def get_current_face_count():
-    return {"face_count": current_face_count}
+@router.get("/video/count", response_model=CountResponse)
+def video_count():
+    c = get_counts()
+    return CountResponse(**c)
+
+
+@router.post("/upload/image", response_model=UploadResponse)
+async def upload_image(file: UploadFile = File(...)):
+    file_id, saved_name = _save_upload(file)
+    return UploadResponse(message="Image uploaded", file_name=saved_name, file_id=file_id)
+
+
+@router.get("/image/annotated/{file_name}")
+def annotated_image(file_name: str):
+    image_path = UPLOAD_DIR / file_name
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    img = cv2.imread(str(image_path))
+    if img is None:
+        raise HTTPException(status_code=500, detail="Could not read image")
+
+    boxes = DETECTOR.detect_boxes(img)
+    draw_faces(img, boxes)
+
+    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    if not ok:
+        raise HTTPException(status_code=500, detail="Could not encode image")
+
+    return Response(content=buf.tobytes(), media_type="image/jpeg")

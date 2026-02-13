@@ -1,72 +1,69 @@
+from typing import List, Tuple
+
 import cv2
 import numpy as np
 import mediapipe as mp
 
+Box = Tuple[int, int, int, int]
+
 
 class FaceDetector:
+    """
+    Uses MediaPipe SOLUTIONS (most stable).
+    model_selection:
+      0 = short-range (selfie / close faces)
+      1 = long-range (farther faces)
+    """
+    def __init__(self, min_confidence: float = 0.3, model_selection: int = 1):
+        if not hasattr(mp, "solutions"):
+            raise RuntimeError(
+                "Your mediapipe install is broken (no mp.solutions). "
+                "Run: pip uninstall -y mediapipe && pip install mediapipe"
+            )
 
-    def __init__(self, min_confidence: float = 0.1):
-        self.min_confidence = min_confidence
-        self._mp_face = mp.solutions.face_detection
-        self.detector = self._mp_face.FaceDetection(
-            model_selection=1,
-            min_detection_confidence=0.1,
+        self._fd = mp.solutions.face_detection.FaceDetection(
+            model_selection=int(model_selection),
+            min_detection_confidence=float(min_confidence),
         )
 
-    def detect(self, frame: np.ndarray):
-
-        if frame is None or frame.size == 0:
+    def detect_boxes(self, frame_bgr: np.ndarray) -> List[Box]:
+        if frame_bgr is None or frame_bgr.size == 0:
             return []
 
-        h, w = frame.shape[:2]
+        h, w = frame_bgr.shape[:2]
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.detector.process(rgb)
+        # MediaPipe solutions expects RGB
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        rgb = np.ascontiguousarray(rgb)
 
-        detections = []
+        results = self._fd.process(rgb)
+        boxes: List[Box] = []
 
         if results.detections:
             for det in results.detections:
-                score = float(det.score[0])
-                if score < self.min_confidence:
-                    continue
+                b = det.location_data.relative_bounding_box
+                x1 = int(b.xmin * w)
+                y1 = int(b.ymin * h)
+                x2 = int((b.xmin + b.width) * w)
+                y2 = int((b.ymin + b.height) * h)
 
-                bbox = det.location_data.relative_bounding_box
+                # clamp
+                x1 = max(0, min(x1, w - 1))
+                y1 = max(0, min(y1, h - 1))
+                x2 = max(0, min(x2, w - 1))
+                y2 = max(0, min(y2, h - 1))
 
-                x1 = int(max(0, bbox.xmin * w))
-                y1 = int(max(0, bbox.ymin * h))
-                x2 = int(min(w, (bbox.xmin + bbox.width) * w))
-                y2 = int(min(h, (bbox.ymin + bbox.height) * h))
+                if x2 > x1 and y2 > y1:
+                    boxes.append((x1, y1, x2, y2))
 
-                detections.append(((x1, y1, x2, y2), score))
-
-        return detections
+        return boxes
 
 
-def draw_faces(frame: np.ndarray, detections):
+def draw_faces(frame: np.ndarray, boxes: List[Box]) -> np.ndarray:
+    for (x1, y1, x2, y2) in boxes:
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    return frame
 
-    output = frame.copy()
 
-    for (x1, y1, x2, y2), score in detections:
-        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(
-            output,
-            f"{score:.2f}",
-            (x1, max(0, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2,
-        )
-
-    cv2.putText(
-        output,
-        f"Faces: {len(detections)}",
-        (10, 35),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        (0, 255, 0),
-        2,
-    )
-
-    return output
+# One global detector (fast + stable)
+DETECTOR = FaceDetector(min_confidence=0.3, model_selection=1)

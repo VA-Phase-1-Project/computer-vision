@@ -1,138 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Video Analytics - Face Detection</title>
-    <style>
-        body {
-            font-family: Arial;
-            background: #f4f4f4;
-            padding: 40px;
-            text-align: center;
-        }
-
-        section {
-            margin-bottom: 50px;
-        }
-
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        img {
-            margin-top: 20px;
-            max-width: 700px;
-            border: 2px solid #333;
-        }
-
-        .live-count {
-            font-size: 24px;
-            font-weight: bold;
-            color: green;
-            margin-top: 15px;
-        }
-    </style>
+  <title>Face Detection Web App</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 40px; }
+    hr { margin: 40px 0; }
+    #videoStream {
+      width: 80%;
+      max-width: 1100px;
+      border: 2px solid #111;
+      background: #f2f2f2;
+      height: auto;
+      object-fit: contain;   /* IMPORTANT: prevents stretching */
+    }
+    #imageResult {
+      width: 80%;
+      max-width: 900px;
+      height: auto;
+      object-fit: contain;
+    }
+    button { padding: 7px 14px; margin-left: 10px; }
+    #status, #imageStatus { margin-top: 10px; font-weight: bold; }
+  </style>
 </head>
 <body>
 
 <h1>Face Detection Web App</h1>
 
-<!-- ================= IMAGE SECTION ================= -->
-
-<section>
-    <h2>Image Upload</h2>
-
-    <input type="file" id="imageInput" accept="image/*">
-    <br><br>
-
-    <button onclick="uploadImage()">Detect Faces</button>
-
-    <div id="imageResult"></div>
-    <img id="imageOutput">
-</section>
+<h2>Image Upload</h2>
+<input type="file" id="imageInput" accept="image/*">
+<button onclick="uploadImage()">Detect Faces</button>
+<div id="imageStatus"></div>
+<img id="imageResult" />
 
 <hr>
 
-<!-- ================= VIDEO SECTION ================= -->
+<h2>Video Upload</h2>
+<input type="file" id="videoInput" accept="video/*">
+<button onclick="processVideo()">Process Video</button>
 
-<section>
-    <h2>Video Upload</h2>
-
-    <input type="file" id="videoInput" accept="video/*">
-    <br><br>
-
-    <button onclick="uploadVideo()">Process Video</button>
-
-    <div class="live-count" id="liveCount">
-        Faces: 0
-    </div>
-
-    <img id="videoStream">
-</section>
+<h3 id="faceCountText">Live: 0 | Unique: 0</h3>
+<div id="status"></div>
+<img id="videoStream" />
 
 <script>
-
-let pollingInterval = null;
-
-/* ================= IMAGE ================= */
+let countInterval = null;
+let currentFileName = null;
 
 async function uploadImage() {
-    const file = document.getElementById("imageInput").files[0];
-    if (!file) return alert("Select image first");
+  const file = document.getElementById("imageInput").files[0];
+  if (!file) return alert("Select image first");
 
-    const formData = new FormData();
-    formData.append("file", file);
+  document.getElementById("imageStatus").innerText = "Uploading...";
 
-    const response = await fetch("/face/image", {
-        method: "POST",
-        body: formData
-    });
+  const fd = new FormData();
+  fd.append("file", file);
 
-    const data = await response.json();
+  const res = await fetch("/face/upload/image", { method: "POST", body: fd });
+  if (!res.ok) {
+    document.getElementById("imageStatus").innerText = "Upload failed";
+    return;
+  }
 
-    document.getElementById("imageResult").innerHTML =
-        `<h3>Face Count: ${data.face_count}</h3>`;
-
-    document.getElementById("imageOutput").src =
-        "data:image/jpeg;base64," + data.image_base64;
+  const data = await res.json();
+  document.getElementById("imageResult").src = `/face/image/annotated/${data.file_name}`;
+  document.getElementById("imageStatus").innerText = "Done";
 }
 
+async function processVideo() {
+  const file = document.getElementById("videoInput").files[0];
+  if (!file) return alert("Select video first");
 
-/* ================= VIDEO ================= */
+  document.getElementById("status").innerText = "Uploading...";
+  document.getElementById("videoStream").src = "";
+  document.getElementById("faceCountText").innerText = "Live: 0 | Unique: 0";
 
-async function uploadVideo() {
-    const file = document.getElementById("videoInput").files[0];
-    if (!file) return alert("Select video first");
+  if (countInterval) clearInterval(countInterval);
 
-    const formData = new FormData();
-    formData.append("file", file);
+  const fd = new FormData();
+  fd.append("file", file);
 
-    const response = await fetch("/face/video", {
-        method: "POST",
-        body: formData
-    });
+  const uploadRes = await fetch("/face/upload/video", { method: "POST", body: fd });
+  if (!uploadRes.ok) {
+    document.getElementById("status").innerText = "Video upload failed";
+    return;
+  }
 
-    const data = await response.json();
+  const uploadData = await uploadRes.json();
+  currentFileName = uploadData.file_name;
 
-    document.getElementById("videoStream").src = data.stream_url;
+  document.getElementById("status").innerText = "Streaming + detecting...";
+  document.getElementById("videoStream").src = `/face/video/stream/${currentFileName}`;
 
-    startPolling();
+  countInterval = setInterval(updateCount, 1000);
 }
 
-function startPolling() {
-    if (pollingInterval) clearInterval(pollingInterval);
+async function updateCount() {
+  const res = await fetch("/face/video/count");
+  if (!res.ok) return;
+  const data = await res.json();
 
-    pollingInterval = setInterval(async () => {
-        const response = await fetch("/face/video/count");
-        const data = await response.json();
+  document.getElementById("faceCountText").innerText =
+    `Live: ${data.current_face_count} | Unique: ${data.total_unique_faces}`;
 
-        document.getElementById("liveCount").innerText =
-            "Faces: " + data.face_count;
-
-    }, 500);
+  if (!data.is_active && data.last_error) {
+    document.getElementById("status").innerText = "Stopped: " + data.last_error;
+    clearInterval(countInterval);
+  }
 }
-
 </script>
 
 </body>

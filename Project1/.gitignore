@@ -1,5 +1,12 @@
+# Virtual env
+.venv/
+
+# Uploads
+backend/src/uploads/
+
+# Models
+backend/src/models/*.tflite
+
+# Python
 __pycache__/
 *.pyc
-.env
-.venv/
-venv/

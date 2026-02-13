@@ -1,13 +1,15 @@
 from pydantic import BaseModel
-from typing import List, Tuple
+from typing import Optional
 
 
-class FaceBox(BaseModel):
-    box: Tuple[int, int, int, int]
-    confidence: float
+class UploadResponse(BaseModel):
+    message: str
+    file_name: str
+    file_id: str
 
 
-class FaceDetectionResult(BaseModel):
-    face_count: int
-    faces: List[FaceBox]
-    image_base64: str
+class CountResponse(BaseModel):
+    current_face_count: int
+    total_unique_faces: int
+    is_active: bool
+    last_error: Optional[str] = None

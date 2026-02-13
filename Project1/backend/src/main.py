@@ -1,24 +1,25 @@
+from pathlib import Path
+
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from face_detection.router import router as face_router
-import os
 
-app = FastAPI(title="Video Analytics API")
+app = FastAPI(title="Face Detection Web App", version="1.0.0")
 
-app.include_router(face_router)
+app.include_router(face_router, prefix="/face", tags=["Face Detection"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-frontend_path = os.path.join(BASE_DIR, "frontend")
+# main.py is: Project1/backend/src/main.py
+# parents[2] = Project1/
+BASE_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIR = BASE_DIR / "frontend"
 
-app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
 @app.get("/")
-def serve_frontend():
-    return FileResponse(os.path.join(frontend_path, "index.html"))
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+def index():
+    index_file = FRONTEND_DIR / "index.html"
+    return FileResponse(index_file)
