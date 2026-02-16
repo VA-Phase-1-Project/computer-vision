@@ -1,290 +1,136 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Face Analytics Dashboard</title>
+    <title>Video Analytics - Face Detection</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f4f4;
+            padding: 40px;
+            text-align: center;
+        }
 
-<style>
-:root {
-  --bg: #f1f5f9;
-  --sidebar: #0f172a;
-  --sidebar-text: #94a3b8;
-  --primary: #2563eb;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --card: #ffffff;
-  --border: #e2e8f0;
-  --radius: 16px;
-}
+        section {
+            margin-bottom: 50px;
+        }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: Inter, system-ui, sans-serif;
-}
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
 
-body {
-  background: var(--bg);
-  display: flex;
-  min-height: 100vh;
-}
+        img {
+            margin-top: 20px;
+            max-width: 700px;
+            border: 2px solid #333;
+        }
 
-/* Sidebar */
-
-.sidebar {
-  width: 250px;
-  background: var(--sidebar);
-  color: white;
-  padding: 30px 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar h2 {
-  margin-bottom: 40px;
-  font-size: 20px;
-}
-
-.sidebar a {
-  text-decoration: none;
-  color: var(--sidebar-text);
-  padding: 10px 0;
-  font-size: 14px;
-  transition: 0.2s;
-}
-
-.sidebar a:hover {
-  color: white;
-}
-
-/* Main */
-
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  background: white;
-  padding: 20px 40px;
-  border-bottom: 1px solid var(--border);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-/* Content */
-
-.content {
-  padding: 40px;
-  display: grid;
-  gap: 30px;
-}
-
-/* Cards */
-
-.card {
-  background: var(--card);
-  padding: 30px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: 0 10px 25px rgba(0,0,0,0.04);
-}
-
-.card h3 {
-  margin-bottom: 20px;
-}
-
-/* Upload */
-
-input[type="file"] {
-  width: 100%;
-  padding: 14px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  background: #fafafa;
-  margin-bottom: 20px;
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-button:hover {
-  opacity: 0.9;
-}
-
-/* Status */
-
-.status {
-  margin-top: 15px;
-  font-weight: 600;
-}
-
-.success { color: var(--success); }
-.error { color: var(--danger); }
-
-/* Image + Video */
-
-img {
-  width: 100%;
-  margin-top: 20px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  object-fit: contain;
-}
-
-/* Responsive */
-
-@media (max-width: 900px) {
-  .sidebar {
-    display: none;
-  }
-}
-</style>
+        .live-count {
+            font-size: 24px;
+            font-weight: bold;
+            color: green;
+            margin-top: 15px;
+        }
+    </style>
 </head>
-
 <body>
 
-<div class="sidebar">
-  <h2>Face Analytics</h2>
-  <a href="#">Dashboard</a>
-  <a href="#">Video Detection</a>
-  <a href="#">Image Detection</a>
-</div>
+<h1>Face Detection Web App</h1>
 
-<div class="main">
-  <div class="header">
-    Face Detection Dashboard
-  </div>
+<!-- ================= IMAGE SECTION ================= -->
 
-  <div class="content">
+<section>
+    <h2>Image Upload</h2>
 
-    <!-- IMAGE CARD -->
-    <div class="card">
-      <h3>Image Detection</h3>
-      <input type="file" id="imageInput" accept="image/*">
-      <button onclick="uploadImage()">Detect Faces</button>
-      <div id="imageStatus" class="status"></div>
-      <img id="imageResult">
+    <input type="file" id="imageInput" accept="image/*">
+    <br><br>
+
+    <button onclick="uploadImage()">Detect Faces</button>
+
+    <div id="imageResult"></div>
+    <img id="imageOutput">
+</section>
+
+<hr>
+
+<!-- ================= VIDEO SECTION ================= -->
+
+<section>
+    <h2>Video Upload</h2>
+
+    <input type="file" id="videoInput" accept="video/*">
+    <br><br>
+
+    <button onclick="uploadVideo()">Process Video</button>
+
+    <div class="live-count" id="liveCount">
+        Faces: 0
     </div>
 
-    <!-- VIDEO CARD -->
-    <div class="card">
-      <h3>Video Detection (Live Stream)</h3>
-      <input type="file" id="videoInput" accept="video/*">
-      <button onclick="processVideo()">Start Processing</button>
-
-      <div id="videoStatus" class="status"></div>
-      <div id="faceCount" class="status success">Live: 0 | Unique: 0</div>
-
-      <img id="videoStream">
-    </div>
-
-  </div>
-</div>
+    <img id="videoStream">
+</section>
 
 <script>
 
-let countInterval = null;
-let currentFileName = null;
+let pollingInterval = null;
 
-/* IMAGE */
+/* ================= IMAGE ================= */
 
 async function uploadImage() {
-  const file = document.getElementById("imageInput").files[0];
-  if (!file) return alert("Select image first");
+    const file = document.getElementById("imageInput").files[0];
+    if (!file) return alert("Select image first");
 
-  const status = document.getElementById("imageStatus");
-  status.innerText = "Uploading...";
-  status.className = "status";
+    const formData = new FormData();
+    formData.append("file", file);
 
-  const formData = new FormData();
-  formData.append("file", file);
+    const response = await fetch("/face/image", {
+        method: "POST",
+        body: formData
+    });
 
-  const res = await fetch("/face/upload/image", {
-    method: "POST",
-    body: formData
-  });
+    const data = await response.json();
 
-  if (!res.ok) {
-    status.innerText = "Upload failed";
-    status.classList.add("error");
-    return;
-  }
+    document.getElementById("imageResult").innerHTML =
+        <h3>Face Count: ${data.face_count}</h3>;
 
-  const data = await res.json();
-  document.getElementById("imageResult").src =
-    `/face/image/annotated/${data.file_name}`;
-
-  status.innerText = "Detection complete";
-  status.classList.add("success");
+    document.getElementById("imageOutput").src =
+        "data:image/jpeg;base64," + data.image_base64;
 }
 
-/* VIDEO */
 
-async function processVideo() {
+/* ================= VIDEO ================= */
 
-  const file = document.getElementById("videoInput").files[0];
-  if (!file) return alert("Select video first");
+async function uploadVideo() {
+    const file = document.getElementById("videoInput").files[0];
+    if (!file) return alert("Select video first");
 
-  const status = document.getElementById("videoStatus");
-  const countDisplay = document.getElementById("faceCount");
+    const formData = new FormData();
+    formData.append("file", file);
 
-  status.innerText = "Uploading video...";
-  status.className = "status";
+    const response = await fetch("/face/video", {
+        method: "POST",
+        body: formData
+    });
 
-  document.getElementById("videoStream").src = "";
-  countDisplay.innerText = "Live: 0 | Unique: 0";
+    const data = await response.json();
 
-  if (countInterval) clearInterval(countInterval);
+    document.getElementById("videoStream").src = data.stream_url;
 
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const uploadRes = await fetch("/face/upload/video", {
-    method: "POST",
-    body: formData
-  });
-
-  if (!uploadRes.ok) {
-    status.innerText = "Video upload failed";
-    status.classList.add("error");
-    return;
-  }
-
-  const uploadData = await uploadRes.json();
-  currentFileName = uploadData.file_name;
-
-  status.innerText = "Streaming & detecting...";
-  status.classList.add("success");
-
-  document.getElementById("videoStream").src =
-    `/face/video/stream/${currentFileName}`;
-
-  countInterval = setInterval(updateCount, 1000);
+    startPolling();
 }
 
-async function updateCount() {
-  const res = await fetch("/face/video/count");
-  if (!res.ok) return;
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
 
-  const data = await res.json();
+    pollingInterval = setInterval(async () => {
+        const response = await fetch("/face/video/count");
+        const data = await response.json();
 
-  document.getElementById("faceCount").innerText =
-    `Live: ${data.current_face_count} | Unique: ${data.total_unique_faces}`;
+        document.getElementById("liveCount").innerText =
+            "Faces: " + data.face_count;
 
-  if (!data.is_active) {
-    clearInterval(countInterval);
-  }
+    }, 500);
 }
 
 </script>
