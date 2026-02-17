@@ -1,66 +1,294 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Face Detection Web App</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Face Detection</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Poppins',sans-serif;
+}
+
+body{
+min-height:100vh;
+background: radial-gradient(circle at 20% 20%, #0f172a, #020617);
+display:flex;
+justify-content:center;
+align-items:center;
+padding:40px;
+color:white;
+overflow-x:hidden;
+}
+
+/* Animated background glow */
+body::before{
+content:'';
+position:absolute;
+width:600px;
+height:600px;
+background: radial-gradient(circle, #6366f1, transparent 70%);
+top:-200px;
+left:-200px;
+filter: blur(150px);
+animation: floatGlow 12s infinite alternate ease-in-out;
+}
+
+@keyframes floatGlow{
+from{transform:translateY(0px)}
+to{transform:translateY(100px)}
+}
+
+.container{
+width:100%;
+max-width:1200px;
+z-index:2;
+}
+
+.title{
+text-align:center;
+font-size:48px;
+font-weight:700;
+margin-bottom:50px;
+background: linear-gradient(90deg,#6366f1,#a855f7);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
+animation: fadeDown 1s ease;
+}
+
+.cards{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:40px;
+}
+
+.card{
+background:rgba(255,255,255,0.05);
+backdrop-filter:blur(20px);
+border:1px solid rgba(255,255,255,0.1);
+border-radius:25px;
+padding:40px;
+box-shadow:0 20px 50px rgba(0,0,0,0.5);
+transition:0.4s;
+position:relative;
+overflow:hidden;
+}
+
+.card:hover{
+transform:translateY(-10px);
+box-shadow:0 30px 60px rgba(99,102,241,0.4);
+}
+
+.card h2{
+margin-bottom:20px;
+font-weight:600;
+font-size:22px;
+}
+
+.upload-box{
+border:2px dashed rgba(255,255,255,0.2);
+border-radius:15px;
+padding:50px;
+text-align:center;
+cursor:pointer;
+transition:0.3s;
+}
+
+.upload-box:hover{
+background:rgba(255,255,255,0.05);
+border-color:#6366f1;
+}
+
+input[type="file"]{
+display:none;
+}
+
+button{
+margin-top:25px;
+width:100%;
+padding:15px;
+border:none;
+border-radius:12px;
+background:linear-gradient(90deg,#6366f1,#a855f7);
+color:white;
+font-weight:600;
+font-size:16px;
+cursor:pointer;
+transition:0.3s;
+position:relative;
+overflow:hidden;
+}
+
+button::after{
+content:'';
+position:absolute;
+width:100%;
+height:100%;
+top:0;
+left:-100%;
+background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent);
+transition:0.5s;
+}
+
+button:hover::after{
+left:100%;
+}
+
+button:hover{
+transform:scale(1.03);
+box-shadow:0 0 25px #6366f1;
+}
+
+.result{
+margin-top:25px;
+display:none;
+border-radius:15px;
+width:100%;
+}
+
+.counter{
+margin-top:20px;
+font-size:18px;
+font-weight:600;
+color:#a855f7;
+}
+
+.loader{
+margin-top:25px;
+border:4px solid rgba(255,255,255,0.1);
+border-top:4px solid #6366f1;
+border-radius:50%;
+width:40px;
+height:40px;
+animation:spin 1s linear infinite;
+display:none;
+}
+
+@keyframes spin{
+100%{transform:rotate(360deg)}
+}
+
+@keyframes fadeDown{
+from{opacity:0;transform:translateY(-40px)}
+to{opacity:1;transform:translateY(0)}
+}
+
+@media(max-width:900px){
+.cards{
+grid-template-columns:1fr;
+}
+}
+</style>
 </head>
+
 <body>
 
-<h1>Face Detection Web App</h1>
+<div class="container">
+<h1 class="title">AI Face Detection</h1>
 
-<h2>Image Upload</h2>
-<input type="file" id="imageInput">
+<div class="cards">
+
+<!-- IMAGE CARD -->
+<div class="card">
+<h2>Image Detection</h2>
+
+<label for="imageInput" class="upload-box">
+Click to Upload Image
+</label>
+<input type="file" id="imageInput" accept="image/*">
+
 <button onclick="uploadImage()">Detect Faces</button>
-<br><br>
-<img id="imageResult" width="500">
 
-<hr>
+<div class="loader" id="imageLoader"></div>
+<img id="imageResult" class="result">
+</div>
 
-<h2>Video Upload</h2>
-<input type="file" id="videoInput">
+<!-- VIDEO CARD -->
+<div class="card">
+<h2>Video Detection</h2>
+
+<label for="videoInput" class="upload-box">
+Click to Upload Video
+</label>
+<input type="file" id="videoInput" accept="video/*">
+
 <button onclick="uploadVideo()">Process Video</button>
-<h3 id="faceCount">Faces: 0</h3>
-<img id="videoStream" width="500">
+
+<div class="loader" id="videoLoader"></div>
+<div class="counter" id="faceCount">Faces: 0</div>
+<img id="videoStream" class="result">
+</div>
+
+</div>
+</div>
 
 <script>
+let interval=null;
 
-async function uploadImage() {
-    const file = document.getElementById("imageInput").files[0];
-    const formData = new FormData();
-    formData.append("file", file);
+async function uploadImage(){
+const file=document.getElementById("imageInput").files[0];
+if(!file) return alert("Select an image");
 
-    const res = await fetch("/upload/image", {
-        method: "POST",
-        body: formData
-    });
+const loader=document.getElementById("imageLoader");
+const img=document.getElementById("imageResult");
 
-    const data = await res.json();
-    document.getElementById("imageResult").src =
-        `/image/${data.file_name}`;
+loader.style.display="block";
+img.style.display="none";
+
+const formData=new FormData();
+formData.append("file",file);
+
+const res=await fetch("/face/upload/image",{
+method:"POST",
+body:formData
+});
+
+const data=await res.json();
+
+loader.style.display="none";
+img.src=`/face/image/${data.file_name}`;
+img.style.display="block";
 }
 
-async function uploadVideo() {
-    const file = document.getElementById("videoInput").files[0];
-    const formData = new FormData();
-    formData.append("file", file);
+async function uploadVideo(){
+const file=document.getElementById("videoInput").files[0];
+if(!file) return alert("Select a video");
 
-    const res = await fetch("/upload/video", {
-        method: "POST",
-        body: formData
-    });
+const loader=document.getElementById("videoLoader");
+const stream=document.getElementById("videoStream");
+const counter=document.getElementById("faceCount");
 
-    const data = await res.json();
+loader.style.display="block";
+stream.style.display="none";
+counter.innerText="Faces: 0";
 
-    document.getElementById("videoStream").src =
-        `/video/stream/${data.file_name}`;
+const formData=new FormData();
+formData.append("file",file);
 
-    setInterval(async () => {
-        const countRes = await fetch("/video/count");
-        const countData = await countRes.json();
-        document.getElementById("faceCount").innerText =
-            `Faces: ${countData.faces}`;
-    }, 1000);
+const res=await fetch("/face/upload/video",{
+method:"POST",
+body:formData
+});
+
+const data=await res.json();
+
+loader.style.display="none";
+stream.src=`/face/video/stream/${data.file_name}`;
+stream.style.display="block";
+
+if(interval) clearInterval(interval);
+
+interval=setInterval(async()=>{
+const countRes=await fetch("/face/video/count");
+const countData=await countRes.json();
+counter.innerText="Faces: "+countData.faces;
+},1000);
 }
-
 </script>
 
 </body>

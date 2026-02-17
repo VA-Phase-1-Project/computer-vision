@@ -9,9 +9,10 @@ from .video import mjpeg_stream_from_video_path, get_counts
 
 router = APIRouter()
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def save_upload(file: UploadFile):
     ext = Path(file.filename).suffix
